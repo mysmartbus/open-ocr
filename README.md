@@ -1,8 +1,9 @@
 [![GoDoc](http://godoc.org/github.com/tleyden/open-ocr?status.png)](http://godoc.org/github.com/tleyden/open-ocr) 
 [![Join the chat at https://gitter.im/tleyden/open-ocr](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/tleyden/open-ocr?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-
 OpenOCR makes it simple to host your own OCR REST API.
+
+This fork of https://github.com/tleyden/open-ocr has been modified to run on the Rapsberry Pi 3. It should also work on other armhf/arm32v7 based computers but this has not been tested.
 
 The heavy lifting OCR work is handled by [Tesseract OCR](https://code.google.com/p/tesseract-ocr/).
 
@@ -32,81 +33,46 @@ OpenOCR can easily run on any PAAS that supports Docker containers.  Here are th
 
 If your preferred PAAS isn't listed, please open a [Github issue](https://github.com/tleyden/open-ocr/issues) to request instructions.
 
-# Launching OpenOCR on Ubuntu 14.04
-
-OpenOCR can be launched on anything that supports Docker, such as Ubuntu 14.04.  
-
-Here's how to install it from scratch and verify that it's working correctly.
-
-## Install Docker
-
-See [Installing Docker on Ubuntu](https://docs.docker.com/installation/ubuntulinux/) instructions.
-
-## Find out your host address
-
-```
-$ ifconfig
-eth0      Link encap:Ethernet  HWaddr 08:00:27:43:40:c7
-          inet addr:10.0.2.15  Bcast:10.0.2.255  Mask:255.255.255.0
-          ...
-```
-
-The ip address `10.0.2.15` will be used as the `RABBITMQ_HOST` env variable below.
-
-
-# Launching OpenOCR command run.sh
+# Installing as a Docker Service
 
  * [Install docker](https://docs.docker.com/installation/)
- * [Install docker-compose](https://docs.docker.com/compose/)
- * `git clone https://github.com/tleyden/open-ocr.git`
+ * `git clone https://github.com/mysmartbus/open-ocr.git`
  * `cd open-ocr/docker-compose`
- * Type ```./run.sh ``` (in case you don't have execute right type ```sudo chmod +x run.sh```
- * The runner will ask you if you want to delete the images (choose y or n for each)
- * The runner will ask you to choose between version 1 and 2
-   * Version 1 is using the ocr Tesseract 3.04. The memory usage is light. It is pretty fast and not costly in term of size (a simple aws instance with 1GB of ram and 8GB of storage is sufficiant). Result are acceptable
-   * Version 2 is using the ocr Tesseract 4.00. The memory usage is light. It is less fast than tesseract 3 and more costly in term of size (an simple aws instance with 1GB of ram is sufficient but with an EBS of 16GB of storage). Result are really better compared to version 3.04.
-   * To see a comparative you can have a look to the [official page of tesseract](https://github.com/tesseract-ocr/tesseract/wiki/4.0-Accuracy-and-Performance)
+ * Type `./install.sh stack_name` (in case you don't have execute right type `sudo chmod +x install.sh`
 
+The Docker nodes will begin downloading the images from hub.docker.com and extracting them to the SD card. This will take a couple of minutes to complete.
 
-**You can use the docker-compose without the run.sh. For this just do:**
+To view progress, run `watch -n 5 'docker service ls'`. This will run the `docker service ls` command every 5 seconds until you press Ctrl-C.
 
-```
-# for v1
-export OPEN_OCR_INSTANCE=open-ocr
+There will be four new services:
 
-# for v2
-export OPEN_OCR_INSTANCE=open-ocr-2
+* [RabbitMQ](https://hub.docker.com/r/arm32v7/rabbitmq/)
+* [OpenOCR Worker](https://hub.docker.com/r/mysmartbus/open-ocr-arm32v7/)
+* [OpenOCR HTTP API Server](https://hub.docker.com/r/mysmartbus/open-ocr-arm32v7/)
+* [OpenOCR Transform Worker](https://hub.docker.com/r/mysmartbus/open-ocr-preprocessor-arm32v7/)
 
-# then up (with -d to start it as deamon)
-docker-compose up
+You are now ready to decode images to text via your REST API.
 
-```
+# Rebuilding the Images
 
-Docker Compose will start four docker instances
+* `cd open-ocr/docker-compose`
+* Type `./rebuild_images.sh tag` (in case you don't have execute right type `sudo chmod +x rebuild_images.sh`
 
-* [RabbitMQ](https://index.docker.io/u/tutum/rabbitmq/)
-* [OpenOCR Worker](https://index.docker.io/u/tleyden5iwx/open-ocr/)
-* [OpenOCR HTTP API Server](https://index.docker.io/u/tleyden5iwx/open-ocr/)
-* [OpenOCR Transform Worker](https://registry.hub.docker.com/u/tleyden5iwx/open-ocr-preprocessor/)
+`tag` is passed onto `docker build -t` to identify the images and so docker knows which registry to upload them to. Read the [Docker build](https://docs.docker.com/engine/reference/commandline/build/#tag-an-image--t) docs if you are unsure of what to enter for the tag.
 
-You are now ready to decode images → text via your REST API.
+It will take about 30 minutes on a Raspberry Pi 2 to build the images. After the images have been built, they will be uploaded to either the docker public registry (hub.docker.com) or a registry of your choice.
 
-# Launching OpenOCR with Docker Compose on OSX
+# Testing Your OCR Service
 
- * [Install docker](https://docs.docker.com/installation/)
- * [Install docker toolbox](https://www.docker.com/products/docker-toolbox)
- * Checkout OpenOCR repository 
- * `cd docker-compose directory`
- * `docker-machine start default`
- * `docker-machine env` 
- * Look at the Docker host IP address
- * Run  `docker-compose up -d` to run containers as daemons or `docker-compose up` to see the log in console
- 
+## Find your host address
 
-## How to test the REST API after turning on the docker-compose up
+Log onto any of your Docker swarm managers and run the following command.
 
-Where `IP_ADDRESS_OF_DOCKER_HOST` is what you saw when you run `docker-machine env` (e.g. 192.168.99.100)
-and where `HTTP_POST` is the port number inside the `.yml` file inside the docker-compose directory presuming it should be the same 9292.
+`docker info | grep "Node Address"`
+
+This will print something similar to `Node Address: 192.168.17.107`.
+
+## The Test
 
 **Request**
 
@@ -114,37 +80,10 @@ and where `HTTP_POST` is the port number inside the `.yml` file inside the docke
 $ curl -X POST -H "Content-Type: application/json" -d '{"img_url":"http://bit.ly/ocrimage","engine":"tesseract"}' http://IP_ADDRESS_OF_DOCKER_HOST:HTTP_PORT/ocr
 ```
 
-Assuming the values are (192.168.99.100 and 9292 respectively)
+Assuming the values are 192.168.17.107 and 9292, replace `IP_ADDRESS_OF_DOCKER_HOST` with the IP Address (e.g. 192.168.17.107) and replace `HTTP_PORT` with the port number inside the `docker-compose.yml` file. Default port numer is 9292.
 
 ```
-$ curl -X POST -H "Content-Type: application/json" -d '{"img_url":"http://bit.ly/ocrimage","engine":"tesseract"}' http://192.168.99.100:9292/ocr
-```
-
-**Response**
-
-It will return the decoded text for the [test image](http://bit.ly/ocrimage):
-
-```
-< HTTP/1.1 200 OK
-< Date: Tue, 13 May 2014 16:18:50 GMT
-< Content-Length: 283
-< Content-Type: text/plain; charset=utf-8
-<
-You can create local variables for the pipelines within the template by
-preﬁxing the variable name with a “$" sign. Variable names have to be
-composed of alphanumeric characters and the underscore. In the example
-below I have used a few variations that work for variable names.
-
-```
- 
-# Test the REST API 
-
-## With image url
-
-**Request**
-
-```
-$ curl -X POST -H "Content-Type: application/json" -d '{"img_url":"http://bit.ly/ocrimage","engine":"tesseract"}' http://10.0.2.15:$HTTP_PORT/ocr
+$ curl -X POST -H "Content-Type: application/json" -d '{"img_url":"http://bit.ly/ocrimage","engine":"tesseract"}' http://192.168.17.107:9292/ocr
 ```
 
 **Response**
@@ -152,16 +91,10 @@ $ curl -X POST -H "Content-Type: application/json" -d '{"img_url":"http://bit.ly
 It will return the decoded text for the [test image](http://bit.ly/ocrimage):
 
 ```
-< HTTP/1.1 200 OK
-< Date: Tue, 13 May 2014 16:18:50 GMT
-< Content-Length: 283
-< Content-Type: text/plain; charset=utf-8
-<
 You can create local variables for the pipelines within the template by
-preﬁxing the variable name with a “$" sign. Variable names have to be
+prefixing the variable name with a "$" sign. Variable names have to be
 composed of alphanumeric characters and the underscore. In the example
 below I have used a few variations that work for variable names.
-
 ```
 
 ## With image base64
@@ -170,8 +103,21 @@ below I have used a few variations that work for variable names.
 **Request**
 
 ```
-$ curl -X POST -H "Content-Type: application/json" -d '{"img_base64":"<YOUR BASE 64 HERE>","engine":"tesseract"}' http://10.0.2.15:$HTTP_PORT/ocr
+$ curl -X POST -H "Content-Type: application/json" -d '{"img_base64":"<YOUR BASE 64 HERE>","engine":"tesseract"}' http://192.168.17.107:9292/ocr
 ```
+
+**Response**
+
+It will return the decoded text for the [test image](http://bit.ly/ocrimage):
+
+```
+You can create local variables for the pipelines within the template by
+prefixing the variable name with a "$" sign. Variable names have to be
+composed of alphanumeric characters and the underscore. In the example
+below I have used a few variations that work for variable names.
+```
+
+You can use a website such as https://www.base64-image.de/ to convert an image to base64. Keep in mind that this will create a very long string of letters and numbers. The base64 representation of the test image resulted in a string of 79,109 characters.
 
 
 ## The REST API also supports:
@@ -195,7 +141,7 @@ The supplied `docs/upload-local-file.sh` provides an example of how to upload a 
 # Community
 
 * Follow [@OpenOCR](https://twitter.com/openocr) on Twitter
-* Checkout the [Github issue tracker](https://github.com/tleyden/open-ocr/issues)
+* Checkout the [Github issue tracker](https://github.com/mysmartbus/open-ocr/issues)
 
 # Client Libraries
 
